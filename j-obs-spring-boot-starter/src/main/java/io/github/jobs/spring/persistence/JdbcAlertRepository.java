@@ -17,6 +17,7 @@ import org.springframework.jdbc.core.RowMapper;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -155,16 +156,35 @@ public class JdbcAlertRepository implements AlertRepository {
                 condition = AlertCondition.of("unknown", AlertCondition.ComparisonOperator.GREATER_THAN, 0);
             }
 
+            AlertType type;
+            try {
+                type = AlertType.valueOf(rs.getString("type"));
+            } catch (IllegalArgumentException e) {
+                type = AlertType.METRIC;
+            }
+
+            AlertSeverity severity;
+            try {
+                severity = AlertSeverity.valueOf(rs.getString("severity"));
+            } catch (IllegalArgumentException e) {
+                severity = AlertSeverity.WARNING;
+            }
+
+            Timestamp createdTs = rs.getTimestamp("created_at");
+            Instant createdAt = createdTs != null ? createdTs.toInstant() : Instant.now();
+            Timestamp updatedTs = rs.getTimestamp("updated_at");
+            Instant updatedAt = updatedTs != null ? updatedTs.toInstant() : Instant.now();
+
             return Alert.builder()
                     .id(rs.getString("id"))
                     .name(rs.getString("name"))
                     .description(rs.getString("description"))
-                    .type(AlertType.valueOf(rs.getString("type")))
-                    .severity(AlertSeverity.valueOf(rs.getString("severity")))
+                    .type(type)
+                    .severity(severity)
                     .enabled(rs.getBoolean("enabled"))
                     .condition(condition)
-                    .createdAt(rs.getTimestamp("created_at").toInstant())
-                    .updatedAt(rs.getTimestamp("updated_at").toInstant())
+                    .createdAt(createdAt)
+                    .updatedAt(updatedAt)
                     .build();
         }
     }

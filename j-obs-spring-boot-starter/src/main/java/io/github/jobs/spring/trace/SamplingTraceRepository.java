@@ -23,6 +23,8 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class SamplingTraceRepository implements TraceRepository, Closeable {
 
+    private static final int MAX_TRACKED_TRACE_IDS = 100_000;
+
     private final TraceRepository delegate;
     private final TraceSampler sampler;
     private final Set<String> sampledTraceIds = ConcurrentHashMap.newKeySet();
@@ -44,6 +46,9 @@ public class SamplingTraceRepository implements TraceRepository, Closeable {
 
         // New trace - make sampling decision
         if (sampler.shouldSample(traceId)) {
+            if (sampledTraceIds.size() >= MAX_TRACKED_TRACE_IDS) {
+                sampledTraceIds.clear();
+            }
             sampledTraceIds.add(traceId);
             delegate.addSpan(span);
         }

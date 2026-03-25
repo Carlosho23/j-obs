@@ -23,9 +23,11 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * JDBC-backed implementation of TraceRepository.
@@ -170,9 +172,24 @@ public class JdbcTraceRepository implements TraceRepository, Closeable {
                     sql.toString(), String.class, params.toArray()
             );
 
+            if (traceIds.isEmpty()) {
+                return List.of();
+            }
+
+            // Fetch all spans in a single query to avoid N+1
+            String inClause = String.join(",", Collections.nCopies(traceIds.size(), "?"));
+            String spanSql = "SELECT * FROM j_obs_spans WHERE trace_id IN (" + inClause + ") ORDER BY start_time";
+            List<Span> allSpans = jdbcTemplate.query(spanSql, new SpanRowMapper(), traceIds.toArray());
+
+            Map<String, List<Span>> grouped = allSpans.stream()
+                    .collect(Collectors.groupingBy(Span::traceId));
+
             List<Trace> traces = new ArrayList<>(traceIds.size());
             for (String traceId : traceIds) {
-                findByTraceId(traceId).ifPresent(traces::add);
+                List<Span> spans = grouped.get(traceId);
+                if (spans != null && !spans.isEmpty()) {
+                    traces.add(Trace.of(traceId, spans));
+                }
             }
             return traces;
         } catch (DataAccessException e) {
@@ -230,9 +247,9 @@ public class JdbcTraceRepository implements TraceRepository, Closeable {
                     "SELECT AVG(CAST(duration_ms AS DOUBLE PRECISION)) FROM j_obs_traces WHERE duration_ms IS NOT NULL",
                     Double.class);
 
-            // Percentiles via sorted durations
+            // Percentiles via sorted durations (bounded to prevent OOM)
             List<Long> durations = jdbcTemplate.queryForList(
-                    "SELECT duration_ms FROM j_obs_traces WHERE duration_ms IS NOT NULL ORDER BY duration_ms",
+                    "SELECT duration_ms FROM j_obs_traces WHERE duration_ms IS NOT NULL ORDER BY duration_ms LIMIT 10000",
                     Long.class);
 
             double p50 = percentile(durations, 50);
@@ -373,13 +390,16 @@ public class JdbcTraceRepository implements TraceRepository, Closeable {
     private class SpanRowMapper implements RowMapper<Span> {
         @Override
         public Span mapRow(ResultSet rs, int rowNum) throws SQLException {
+            Timestamp startTs = rs.getTimestamp("start_time");
+            Instant startTime = startTs != null ? startTs.toInstant() : Instant.now();
+
             Span.Builder builder = Span.builder()
                     .spanId(rs.getString("span_id"))
                     .traceId(rs.getString("trace_id"))
                     .parentSpanId(rs.getString("parent_span_id"))
                     .name(rs.getString("name"))
                     .serviceName(rs.getString("service_name"))
-                    .startTime(rs.getTimestamp("start_time").toInstant());
+                    .startTime(startTime);
 
             Timestamp endTime = rs.getTimestamp("end_time");
             if (endTime != null) {

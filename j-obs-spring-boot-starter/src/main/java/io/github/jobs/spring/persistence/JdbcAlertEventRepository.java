@@ -256,18 +256,34 @@ public class JdbcAlertEventRepository implements AlertEventRepository {
     private class AlertEventRowMapper implements RowMapper<AlertEvent> {
         @Override
         public AlertEvent mapRow(ResultSet rs, int rowNum) throws SQLException {
+            Timestamp firedTs = rs.getTimestamp("fired_at");
+            Instant firedAt = firedTs != null ? firedTs.toInstant() : Instant.now();
             Timestamp acknowledgedAt = rs.getTimestamp("acknowledged_at");
             Timestamp resolvedAt = rs.getTimestamp("resolved_at");
+
+            AlertSeverity severity;
+            try {
+                severity = AlertSeverity.valueOf(rs.getString("severity"));
+            } catch (IllegalArgumentException e) {
+                severity = AlertSeverity.WARNING;
+            }
+
+            AlertEventStatus status;
+            try {
+                status = AlertEventStatus.valueOf(rs.getString("status"));
+            } catch (IllegalArgumentException e) {
+                status = AlertEventStatus.FIRING;
+            }
 
             return AlertEvent.builder()
                     .id(rs.getString("id"))
                     .alertId(rs.getString("alert_id"))
                     .alertName(rs.getString("alert_name"))
-                    .severity(AlertSeverity.valueOf(rs.getString("severity")))
-                    .status(AlertEventStatus.valueOf(rs.getString("status")))
+                    .severity(severity)
+                    .status(status)
                     .message(rs.getString("message"))
                     .labels(deserializeMap(rs.getString("labels")))
-                    .firedAt(rs.getTimestamp("fired_at").toInstant())
+                    .firedAt(firedAt)
                     .acknowledgedAt(acknowledgedAt != null ? acknowledgedAt.toInstant() : null)
                     .acknowledgedBy(rs.getString("acknowledged_by"))
                     .resolvedAt(resolvedAt != null ? resolvedAt.toInstant() : null)

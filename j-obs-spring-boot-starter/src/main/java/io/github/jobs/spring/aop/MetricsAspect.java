@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Method;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -31,7 +32,7 @@ public class MetricsAspect {
     private final Map<String, Timer> timers = new ConcurrentHashMap<>();
     private final Map<String, Counter> counters = new ConcurrentHashMap<>();
     private final Map<String, Counter> exceptionCounters = new ConcurrentHashMap<>();
-    private final Map<Method, MeasuredMethodMetadata> metadataCache = new ConcurrentHashMap<>();
+    private final Map<Method, Optional<MeasuredMethodMetadata>> metadataCache = new ConcurrentHashMap<>();
 
     /**
      * Cached metadata extracted from @Measured / @Observable annotations to avoid
@@ -82,8 +83,9 @@ public class MetricsAspect {
         Class<?> targetClass = joinPoint.getTarget().getClass();
 
         // Look up cached metadata or compute on first call
-        MeasuredMethodMetadata metadata = metadataCache.computeIfAbsent(method,
-                m -> buildMeasuredMetadata(m, targetClass));
+        Optional<MeasuredMethodMetadata> cached = metadataCache.computeIfAbsent(method,
+                m -> Optional.ofNullable(buildMeasuredMetadata(m, targetClass)));
+        MeasuredMethodMetadata metadata = cached.orElse(null);
         if (metadata == null) {
             return joinPoint.proceed();
         }
@@ -112,9 +114,8 @@ public class MetricsAspect {
                     if (exceptionCounter != null) {
                         exceptionCounter.increment();
                     }
-                    if (e instanceof Exception) {
-                        throw (Exception) e;
-                    }
+                    if (e instanceof RuntimeException re) throw re;
+                    if (e instanceof Error err) throw err;
                     throw new RuntimeException(e);
                 }
             });

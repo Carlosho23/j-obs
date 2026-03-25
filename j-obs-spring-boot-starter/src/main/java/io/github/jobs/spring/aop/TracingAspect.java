@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -29,7 +30,7 @@ public class TracingAspect {
     private static final Logger log = LoggerFactory.getLogger(TracingAspect.class);
 
     private final Tracer tracer;
-    private final Map<Method, TracedMethodMetadata> metadataCache = new ConcurrentHashMap<>();
+    private final Map<Method, Optional<TracedMethodMetadata>> metadataCache = new ConcurrentHashMap<>();
 
     /**
      * Cached metadata extracted from @Traced / @Observable annotations to avoid
@@ -82,8 +83,9 @@ public class TracingAspect {
         // Look up cached metadata or compute on first call
         TracedMethodMetadata metadata;
         try {
-            metadata = metadataCache.computeIfAbsent(method,
-                    m -> buildMetadata(m, targetClass));
+            Optional<TracedMethodMetadata> cached = metadataCache.computeIfAbsent(method,
+                    m -> Optional.ofNullable(buildMetadata(m, targetClass)));
+            metadata = cached.orElse(null);
         } catch (Exception e) {
             log.debug("Failed to resolve tracing metadata, proceeding without tracing", e);
             return joinPoint.proceed();

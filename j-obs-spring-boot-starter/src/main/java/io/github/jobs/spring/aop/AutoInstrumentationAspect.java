@@ -140,9 +140,8 @@ public class AutoInstrumentationAspect {
                     } catch (Exception spanError) {
                         log.debug("Failed to record span exception", spanError);
                     }
-                    if (e instanceof Exception) {
-                        throw (Exception) e;
-                    }
+                    if (e instanceof RuntimeException re) throw re;
+                    if (e instanceof Error err) throw err;
                     throw new RuntimeException(e);
                 }
             });

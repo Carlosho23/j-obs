@@ -138,7 +138,8 @@ public class RoleBasedAccessInterceptor implements HandlerInterceptor {
         log.warn("Access denied: {}", message);
         response.setStatus(HttpStatus.FORBIDDEN.value());
         response.setContentType("application/json");
-        response.getWriter().write("{\"error\":\"Forbidden\",\"message\":\"" + message + "\"}");
+        String safeMessage = message.replace("\\", "\\\\").replace("\"", "\\\"");
+        response.getWriter().write("{\"error\":\"Forbidden\",\"message\":\"" + safeMessage + "\"}");
         return false;
     }
 }
