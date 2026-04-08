@@ -219,9 +219,10 @@ You can combine multiple starters:
 
 > **Note:** All starters include the base dashboard UI. Features auto-activate based on classpath — only the sections for your chosen starters appear in the dashboard.
 
-### Configure
+### Configure (`application.yml`)
 
 ```yaml
+# src/main/resources/application.yml
 spring:
   application:
     name: my-app
