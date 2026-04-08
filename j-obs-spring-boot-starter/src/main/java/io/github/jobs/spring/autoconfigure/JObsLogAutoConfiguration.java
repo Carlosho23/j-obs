@@ -4,12 +4,14 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
 import io.github.jobs.application.LogRepository;
 import io.github.jobs.infrastructure.InMemoryLogRepository;
+import io.github.jobs.spring.log.JObsLog4j2Appender;
 import io.github.jobs.spring.log.JObsLogAppender;
 import io.github.jobs.spring.log.LogEntryFactory;
 import io.github.jobs.spring.web.LogApiController;
 import io.github.jobs.spring.web.LogController;
 import io.github.jobs.spring.web.template.TemplateService;
 import io.github.jobs.spring.websocket.LogWebSocketHandler;
+import org.apache.logging.log4j.LogManager;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -97,8 +99,8 @@ public class JObsLogAutoConfiguration {
      */
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(name = {
-        "org.springframework.web.socket.config.annotation.WebSocketConfigurer",
-        "jakarta.websocket.server.ServerContainer"
+            "org.springframework.web.socket.config.annotation.WebSocketConfigurer",
+            "jakarta.websocket.server.ServerContainer"
     })
     @EnableWebSocket
     static class WebSocketConfiguration implements WebSocketConfigurer {
@@ -146,6 +148,31 @@ public class JObsLogAutoConfiguration {
 
             // Attach to root logger
             Logger rootLogger = (Logger) LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME);
+            rootLogger.addAppender(appender);
+
+            return appender;
+        }
+    }
+    /**
+     * Configuration for Log4j2 integration (optional).
+     * Only loaded when Log4j2 is on the classpath and Logback is NOT present.
+     */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(name = "org.apache.logging.log4j.core.appender.AbstractAppender")
+    @ConditionalOnMissingBean(type = "io.github.jobs.spring.log.JObsLogAppender")
+    static class Log4j2Configuration {
+
+        @Bean
+        @ConditionalOnMissingBean
+        public JObsLog4j2Appender jObsLog4j2Appender(LogRepository logRepository, LogEntryFactory logEntryFactory) {
+            JObsLog4j2Appender appender = new JObsLog4j2Appender("J-OBS");
+            appender.setLogRepository(logRepository);
+            appender.setLogEntryFactory(logEntryFactory);
+            appender.start();
+
+            // Attach to root logger
+            org.apache.logging.log4j.core.Logger rootLogger =
+                    (org.apache.logging.log4j.core.Logger) LogManager.getRootLogger();
             rootLogger.addAppender(appender);
 
             return appender;
