@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -155,11 +156,16 @@ public class JObsLogAutoConfiguration {
     }
     /**
      * Configuration for Log4j2 integration (optional).
-     * Only loaded when Log4j2 is on the classpath and Logback is NOT present.
+     * Only loaded when Log4j2 Core is on the classpath AND Logback is NOT present.
+     * When both are on the classpath, Logback takes priority (Spring Boot default).
+     *
+     * Uses @ConditionalOnMissingClass instead of @ConditionalOnMissingBean because
+     * @ConditionalOnMissingBean on a @Configuration class is evaluated before any beans
+     * are created, making it unreliable for inter-configuration ordering.
      */
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(name = "org.apache.logging.log4j.core.appender.AbstractAppender")
-    @ConditionalOnMissingBean(type = "io.github.jobs.spring.log.JObsLogAppender")
+    @ConditionalOnMissingClass("ch.qos.logback.classic.Logger")
     static class Log4j2Configuration {
 
         @Bean
@@ -170,10 +176,17 @@ public class JObsLogAutoConfiguration {
             appender.setLogEntryFactory(logEntryFactory);
             appender.start();
 
-            // Attach to root logger
-            org.apache.logging.log4j.core.Logger rootLogger =
-                    (org.apache.logging.log4j.core.Logger) LogManager.getRootLogger();
-            rootLogger.addAppender(appender);
+            // Attach to root logger only when Log4j2 is the real logging backend.
+            // When Log4j2 is bridged to SLF4J (log4j-to-slf4j), getContext() returns
+            // an SLF4J-backed context that is not a Log4j2 LoggerContext — safe to skip.
+            try {
+                org.apache.logging.log4j.spi.LoggerContext ctx = LogManager.getContext(false);
+                if (ctx instanceof org.apache.logging.log4j.core.LoggerContext log4j2Ctx) {
+                    log4j2Ctx.getRootLogger().addAppender(appender);
+                }
+            } catch (Exception | Error ignored) {
+                // Log4j2 context unavailable or bridged — appender bean is still valid
+            }
 
             return appender;
         }
